@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ board.name }}{% endblock %}
+
+{% block content %}
+<!-- Board header -->
+<div class="mb-4 flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ board.name }}</h1>
+    <p class="text-gray-500 text-sm mt-0.5">
+      {{ game.away_team }} <span class="font-bold">@</span> {{ game.home_team }} &mdash;
+      {{ game.game_date|date:"D, M j, Y g:i A" }}
+    </p>
+  </div>
+  {% if not board.is_locked %}
+  <a href="{% url 'boards:claim' board.access_token %}"
+     class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-lg text-sm transition">
+    Claim Squares
+  </a>
+  {% endif %}
+</div>
+
+<!-- Score panel (HTMX-polled when game is active) -->
+<div id="score-panel"
+  {% if game.is_active %}
+  hx-get="{% url 'boards:scores_partial' board.access_token %}"
+  hx-trigger="every 60s"
+  hx-swap="outerHTML"
+  {% endif %}>
+  {% include "boards/partials/game_score.html" %}
+</div>
+
+<!-- Stats strip -->
+<div class="flex flex-wrap gap-6 text-sm text-gray-600 my-4 p-3 bg-white rounded-lg border border-gray-200">
+  <div><span class="font-semibold">{{ claimed_count }}</span>/100 claimed</div>
+  <div><span class="font-semibold">{{ paid_count }}</span> paid</div>
+  {% if board.entry_fee %}
+  <div>$<span class="font-semibold">{{ board.entry_fee }}</span>/square</div>
+  <div>Pot: <span class="font-semibold text-green-700">${{ board.total_pot }}</span></div>
+  {% endif %}
+  {% if board.is_locked %}
+  <div class="text-purple-700 font-medium">Numbers Assigned</div>
+  {% else %}
+  <div class="text-yellow-700">Numbers assigned after board fills / commissioner locks it</div>
+  {% endif %}
+</div>
+
+{% if board.notes %}
+<div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-900">
+  {{ board.notes|linebreaksbr }}
+</div>
+{% endif %}
+
+<!-- 10x10 Grid -->
+<div class="overflow-x-auto mb-6">
+  <table class="border-collapse text-xs select-none" style="table-layout: fixed;">
+    <colgroup>
+      <col style="width: 28px;"><!-- vertical home label -->
+      <col style="width: 28px;"><!-- home digit header -->
+      {% for _ in grid.0 %}
+      <col style="width: 64px;">
+      {% endfor %}
+    </colgroup>
+
+    <thead>
+      <!-- Away team name row -->
+      <tr>
+        <th colspan="2" class="border border-transparent"></th>
+        <th colspan="10" class="text-center font-bold text-blue-800 text-sm py-1 border border-gray-300 bg-blue-50">
+          {{ game.away_team }} (away)
+        </th>
+      </tr>
+      <!-- Away digits row -->
+      <tr>
+        <th class="border border-transparent"></th>
+        <th class="border border-transparent"></th>
+        {% for cell in grid.0 %}
+        <th class="h-7 text-center font-mono font-bold border border-gray-300 bg-blue-100">
+          {% if board.is_locked %}{{ cell.away_digit }}{% else %}?{% endif %}
+        </th>
+        {% endfor %}
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in grid %}
+      <tr>
+        <!-- Home team name (spans all rows, vertical) -->
+        {% if forloop.first %}
+        <td rowspan="10"
+            class="border border-gray-300 bg-red-50 text-center font-bold text-red-800 text-sm"
+            style="width: 28px;">
+          <div class="vertical-text py-2">{{ game.home_team }} (home)</div>
+        </td>
+        {% endif %}
+
+        <!-- Home digit -->
+        <td class="h-16 w-7 text-center font-mono font-bold border border-gray-300 bg-red-100">
+          {% if board.is_locked %}{{ row.0.home_digit }}{% else %}?{% endif %}
+        </td>
+
+        <!-- Squares -->
+        {% for cell in row %}
+        <td class="h-16 border border-gray-300 relative text-center align-middle
+          {% if cell.is_winner %}ring-2 ring-inset ring-yellow-500 bg-yellow-100
+          {% elif cell.is_paid %}bg-green-100
+          {% elif cell.is_claimed %}bg-amber-100
+          {% else %}bg-white{% endif %}
+          ">
+          {% if cell.is_claimed %}
+            <div class="px-1 leading-tight">
+              <div class="font-medium text-gray-800 truncate">{{ cell.square.name }}</div>
+              {% if not cell.is_paid %}
+              <div class="text-amber-700 text-[10px]">unpaid</div>
+              {% endif %}
+              {% if cell.is_winner %}
+              <div class="text-yellow-700 font-bold text-[10px]">WINNER</div>
+              {% endif %}
+            </div>
+          {% elif not board.is_locked %}
+            <a href="{% url 'boards:claim' board.access_token %}?sq={{ cell.row }},{{ cell.col }}"
+               class="absolute inset-0 flex items-center justify-center text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition text-lg">
+              +
+            </a>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Legend -->
+<div class="flex flex-wrap gap-4 text-xs text-gray-600 mb-6">
+  <div class="flex items-center gap-1.5">
+    <div class="w-4 h-4 bg-white border border-gray-300 rounded"></div> Available
+  </div>
+  <div class="flex items-center gap-1.5">
+    <div class="w-4 h-4 bg-amber-100 border border-gray-300 rounded"></div> Claimed (payment pending)
+  </div>
+  <div class="flex items-center gap-1.5">
+    <div class="w-4 h-4 bg-green-100 border border-gray-300 rounded"></div> Paid
+  </div>
+  <div class="flex items-center gap-1.5">
+    <div class="w-4 h-4 bg-yellow-100 ring-2 ring-yellow-500 rounded"></div> Winner
+  </div>
+</div>
+
+<!-- Quarter results -->
+{% if quarter_results %}
+<div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+  <h2 class="font-bold text-gray-800 mb-3">Quarter Results</h2>
+  <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    {% for result in quarter_results %}
+    <div class="rounded-lg border p-3 {% if forloop.last %}border-yellow-300 bg-yellow-50{% else %}border-gray-200 bg-gray-50{% endif %}">
+      <div class="text-xs text-gray-500 font-medium mb-1">
+        {% if result.quarter == 1 %}1st Quarter
+        {% elif result.quarter == 2 %}2nd Quarter (Halftime)
+        {% elif result.quarter == 3 %}3rd Quarter
+        {% else %}Final{% endif %}
+      </div>
+      <div class="font-mono text-sm mb-1">
+        {{ game.away_abbr }} {{ result.away_score }} &mdash; {{ game.home_abbr }} {{ result.home_score }}
+      </div>
+      <div class="text-xs text-gray-500">
+        Digits: {{ game.away_abbr }}=<strong>{{ result.away_digit }}</strong>
+        {{ game.home_abbr }}=<strong>{{ result.home_digit }}</strong>
+      </div>
+      {% if result.winning_square %}
+      <div class="mt-2 font-semibold text-green-700 text-sm">
+        {{ result.winning_square.name }}
+        {% if board.entry_fee %}
+        <span class="text-gray-500 font-normal text-xs">(${{ result.payout|floatformat:2 }})</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="mt-2 text-gray-400 text-xs italic">Square unclaimed</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Payout structure -->
+<div class="bg-white rounded-lg border border-gray-200 p-4">
+  <h2 class="font-bold text-gray-800 mb-3">Payout Structure</h2>
+  <div class="grid gap-2 grid-cols-2 sm:grid-cols-4 text-sm text-center">
+    {% for q, pct in payout_schedule %}
+    <div class="border border-gray-200 rounded p-3">
+      <div class="text-gray-500 text-xs mb-1">{{ q }}</div>
+      <div class="font-semibold text-gray-800">{{ pct }}%</div>
+      {% if board.entry_fee %}
+      <div class="text-green-700 text-xs">${{ board.total_pot|floatformat:2|default:"0.00" }} × {{ pct }}%</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}
