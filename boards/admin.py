@@ -1,6 +1,10 @@
+from django.conf import settings
 from django.contrib import admin
 from django.contrib import messages
-from django.utils import timezone
+from django.core.mail import send_mail
+from django.shortcuts import get_object_or_404, redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import Board, Square
@@ -52,6 +56,64 @@ class BoardAdmin(admin.ModelAdmin):
                        'home_numbers', 'away_numbers', 'created_at'],
         }),
     ]
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:board_id>/send-invite/',
+                self.admin_site.admin_view(self.send_invite_view),
+                name='boards_board_send_invite',
+            ),
+        ]
+        return custom_urls + urls
+
+    def send_invite_view(self, request, board_id):
+        board = get_object_or_404(Board, pk=board_id)
+        board_url = f"{settings.SITE_URL}{board.get_absolute_url()}"
+        change_url = reverse('admin:boards_board_change', args=[board_id])
+
+        if request.method == 'POST':
+            to_email = request.POST.get('to_email', '').strip()
+            if to_email:
+                body = (
+                    f"You've been invited to join NFL Squares!\n\n"
+                    f"Board: {board.name}\n"
+                    f"Game: {board.game}\n\n"
+                    f"Click the link below to view the board and claim your square(s):\n"
+                    f"{board_url}\n\n"
+                    f"Entry fee: ${board.entry_fee}\n"
+                )
+                if board.notes:
+                    body += f"\nPayment info:\n{board.notes}\n"
+                send_mail(
+                    subject=f"Join NFL Squares: {board.name}",
+                    message=body,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[to_email],
+                )
+                messages.success(request, f"Invite sent to {to_email}.")
+                return redirect(change_url)
+            else:
+                messages.error(request, "Please enter a valid email address.")
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': f'Send Invite — {board.name}',
+            'board': board,
+            'board_url': board_url,
+            'default_email': request.user.email or '',
+            'cancel_url': change_url,
+            'opts': self.model._meta,
+        }
+        return TemplateResponse(request, 'admin/boards/board/send_invite.html', context)
+
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['send_invite_url'] = reverse(
+            'admin:boards_board_send_invite', args=[object_id]
+        )
+        return super().change_view(request, object_id, form_url, extra_context)
 
     def board_link(self, obj):
         if obj.pk:

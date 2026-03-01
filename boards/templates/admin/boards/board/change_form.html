@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+  {% if send_invite_url %}
+    <li>
+      <a href="{{ send_invite_url }}">Send Invite Link</a>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
