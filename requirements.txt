@@ -1,0 +1,6 @@
+django>=5.1,<6.0
+psycopg2-binary>=2.9
+gunicorn>=21.0
+whitenoise>=6.7
+requests>=2.31
+python-decouple>=3.8

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}NFL Squares — Boards{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold text-gray-800 mb-6">Active Boards</h1>
+
+{% if boards %}
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {% for board in boards %}
+  <a href="{{ board.get_absolute_url }}"
+     class="block bg-white rounded-lg shadow hover:shadow-md border border-gray-200 p-5 transition">
+    <div class="font-semibold text-gray-900 text-lg mb-1">{{ board.name }}</div>
+    <div class="text-sm text-gray-500 mb-3">
+      {{ board.game.away_team }} @ {{ board.game.home_team }}<br>
+      {{ board.game.game_date|date:"D, M j, Y g:i A T" }}
+    </div>
+    <div class="flex gap-4 text-sm">
+      <span class="inline-flex items-center gap-1 text-gray-600">
+        <span class="w-2 h-2 rounded-full
+          {% if board.game.status == 'in_progress' %}bg-green-500
+          {% elif board.game.status == 'final' %}bg-gray-400
+          {% else %}bg-blue-400{% endif %}">
+        </span>
+        {{ board.game.get_status_display }}
+      </span>
+      <span class="text-gray-600">
+        {{ board.claimed_count }}/100 claimed
+      </span>
+      {% if board.entry_fee %}
+      <span class="font-medium text-green-700">${{ board.entry_fee }}/square</span>
+      {% else %}
+      <span class="text-gray-400">Free</span>
+      {% endif %}
+    </div>
+    {% if board.is_locked %}
+    <div class="mt-2 text-xs font-medium text-purple-700 bg-purple-50 inline-block px-2 py-0.5 rounded">
+      Numbers Assigned
+    </div>
+    {% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-16 text-gray-400">
+  <p class="text-4xl mb-3">🏈</p>
+  <p class="text-lg font-medium">No boards yet.</p>
+  <p class="text-sm mt-1">Ask your commissioner to create one in the <a href="{% url 'admin:index' %}" class="underline text-blue-600">admin panel</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

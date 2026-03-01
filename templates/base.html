@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}NFL Squares{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    /* Writing-mode helper for rotated table header */
+    .vertical-text {
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col">
+
+  <!-- Nav -->
+  <header class="bg-blue-900 text-white shadow">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a href="{% url 'boards:list' %}" class="text-xl font-bold tracking-tight hover:text-blue-200">
+        NFL Squares
+      </a>
+      <nav class="flex gap-4 text-sm">
+        <a href="{% url 'boards:list' %}" class="hover:text-blue-200">Boards</a>
+        <a href="{% url 'admin:index' %}" class="hover:text-blue-200">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Flash messages -->
+  {% if messages %}
+  <div class="max-w-7xl mx-auto w-full px-4 mt-4 space-y-2">
+    {% for message in messages %}
+    <div class="px-4 py-3 rounded text-sm font-medium
+      {% if message.tags == 'error' %}bg-red-100 text-red-800 border border-red-300
+      {% elif message.tags == 'warning' %}bg-yellow-100 text-yellow-800 border border-yellow-300
+      {% else %}bg-green-100 text-green-800 border border-green-300{% endif %}">
+      {{ message }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Main content -->
+  <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="text-center text-xs text-gray-400 py-4">
+    NFL Squares &mdash; Scores via ESPN unofficial API
+  </footer>
+
+</body>
+</html>
