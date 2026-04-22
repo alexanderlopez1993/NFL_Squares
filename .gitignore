@@ -5,3 +5,4 @@ __pycache__/
 staticfiles/
 *.sqlite3
 .DS_Store
+.openclaw/
