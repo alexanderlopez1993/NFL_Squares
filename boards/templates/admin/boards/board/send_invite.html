@@ -1,0 +1,48 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate "Home" %}</a> &rsaquo;
+  <a href="{% url 'admin:boards_board_changelist' %}">{% translate "Boards" %}</a> &rsaquo;
+  <a href="{{ cancel_url }}">{{ board.name }}</a> &rsaquo;
+  {% translate "Send Invite Link" %}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>{% translate "Send Invite Link" %}</h1>
+
+<div class="module aligned">
+  <div class="form-row">
+    <label>{% translate "Board:" %}</label>
+    <p>{{ board.name }}</p>
+  </div>
+  <div class="form-row">
+    <label>{% translate "Game:" %}</label>
+    <p>{{ board.game }}</p>
+  </div>
+  <div class="form-row">
+    <label>{% translate "Board URL:" %}</label>
+    <p><a href="{{ board_url }}" target="_blank" rel="noopener">{{ board_url }}</a></p>
+  </div>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="module aligned">
+    <h2>{% translate "Send invite email" %}</h2>
+    <div class="form-row">
+      <label for="to_email" class="required">{% translate "Send to:" %}</label>
+      <input type="email" name="to_email" id="to_email" required style="width: 320px;">
+      <p class="help">
+        {% translate "Enter a participant email address, or send it to yourself and forward the link." %}
+      </p>
+    </div>
+  </div>
+  <div class="submit-row">
+    <input type="submit" value="{% translate 'Send Email' %}" class="default">
+    <a href="{{ cancel_url }}" style="margin-left: 1.5em;">{% translate "Cancel" %}</a>
+  </div>
+</form>
+{% endblock %}

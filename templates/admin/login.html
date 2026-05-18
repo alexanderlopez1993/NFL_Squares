@@ -1,0 +1,109 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .oauth-panel {
+    margin-bottom: 1rem;
+  }
+
+  .oauth-button {
+    background: #0b57d0;
+    border: 1px solid #0b57d0;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    display: block;
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    width: 100%;
+  }
+
+  .oauth-button:hover,
+  .oauth-button:focus {
+    background: #0842a0;
+  }
+
+  .login-divider {
+    color: var(--body-quiet-color);
+    margin: 1rem 0;
+    text-align: center;
+  }
+</style>
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} login{% endblock %}
+
+{% block usertools %}{% endblock %}
+{% block nav-global %}{% endblock %}
+{% block nav-sidebar %}{% endblock %}
+
+{% block content_title %}{% endblock %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+{% if form.errors and not form.non_field_errors %}
+<p class="errornote">
+  {% blocktranslate count counter=form.errors.items|length %}Please correct the error below.{% plural %}Please correct the errors below.{% endblocktranslate %}
+</p>
+{% endif %}
+
+{% if form.non_field_errors %}
+{% for error in form.non_field_errors %}
+<p class="errornote">{{ error }}</p>
+{% endfor %}
+{% endif %}
+
+<div id="content-main">
+  {% if user.is_authenticated %}
+  <p class="errornote">
+    {% blocktranslate trimmed %}
+    You are authenticated, but your account is not authorized for this admin panel.
+    {% endblocktranslate %}
+  </p>
+  {% endif %}
+
+  <div class="oauth-panel">
+    {% if google_oauth_configured %}
+    {% with oauth_next=next|default:"/admin/" %}
+    <form method="post" action="/accounts/google/login/">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ oauth_next }}">
+      <input type="hidden" name="process" value="login">
+      <button type="submit" class="oauth-button">{% translate "Continue with Google" %}</button>
+    </form>
+    {% endwith %}
+    {% else %}
+    <button type="button" class="oauth-button" disabled>{% translate "Continue with Google" %}</button>
+    <p class="help">
+      {% translate "Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to enable Google login." %}
+    </p>
+    {% endif %}
+  </div>
+
+  <div class="login-divider">{% translate "or use a local admin account" %}</div>
+
+  <form action="{{ app_path }}" method="post" id="login-form">{% csrf_token %}
+    <div class="form-row">
+      {{ form.username.errors }}
+      {{ form.username.label_tag }} {{ form.username }}
+    </div>
+    <div class="form-row">
+      {{ form.password.errors }}
+      {{ form.password.label_tag }} {{ form.password }}
+      <input type="hidden" name="next" value="{{ next }}">
+    </div>
+    {% url 'admin_password_reset' as password_reset_url %}
+    {% if password_reset_url %}
+    <div class="password-reset-link">
+      <a href="{{ password_reset_url }}">{% translate "Forgotten your password or username?" %}</a>
+    </div>
+    {% endif %}
+    <div class="submit-row">
+      <input type="submit" value="{% translate 'Log in' %}">
+    </div>
+  </form>
+</div>
+{% endblock %}

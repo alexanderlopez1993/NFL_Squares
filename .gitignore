@@ -5,3 +5,7 @@ __pycache__/
 staticfiles/
 *.sqlite3
 .DS_Store
+.openclaw/
+.local_server.pid
+logs/
+*.app/

@@ -1,15 +1,22 @@
-import random
 import secrets
-import string
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
 
 
 def _gen_token():
-    return secrets.token_urlsafe(6)  # ~8 URL-safe chars
+    """Generate a high-entropy board access token.
+
+    Args:
+        None.
+
+    Returns:
+        str: URL-safe token for private board links.
+    """
+    return secrets.token_urlsafe(16)
 
 
 class Board(models.Model):
@@ -30,7 +37,7 @@ class Board(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     # Board state
-    access_token = models.CharField(max_length=12, unique=True, default=_gen_token, db_index=True)
+    access_token = models.CharField(max_length=32, unique=True, default=_gen_token, db_index=True)
     is_locked = models.BooleanField(default=False, help_text='Numbers have been assigned; no new claims allowed.')
     numbers_assigned_at = models.DateTimeField(null=True, blank=True)
 
@@ -44,6 +51,30 @@ class Board(models.Model):
     def __str__(self):
         return f"{self.name} ({self.game})"
 
+    def clean(self):
+        """Validate board settings before saving.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+
+        Raises:
+            ValidationError: If payout percentages do not total 100.
+        """
+        super().clean()
+        payout_total = (
+            self.payout_q1_pct
+            + self.payout_q2_pct
+            + self.payout_q3_pct
+            + self.payout_q4_pct
+        )
+        if payout_total != 100:
+            raise ValidationError({
+                '__all__': f'Payout percentages must total 100. Current total: {payout_total}.'
+            })
+
     def get_absolute_url(self):
         return reverse('boards:detail', args=[self.access_token])
 
@@ -52,16 +83,45 @@ class Board(models.Model):
     # ------------------------------------------------------------------ #
 
     def assign_numbers(self):
-        """Randomly assign 0–9 to each axis and lock the board."""
-        nums = list(range(10))
-        random.shuffle(nums)
-        self.home_numbers = nums
-        nums = list(range(10))
-        random.shuffle(nums)
-        self.away_numbers = nums
+        """Randomly assign scoring digits to each axis and lock the board.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
+        rng = secrets.SystemRandom()
+        home_nums = list(range(10))
+        away_nums = list(range(10))
+        rng.shuffle(home_nums)
+        rng.shuffle(away_nums)
+        self.home_numbers = home_nums
+        self.away_numbers = away_nums
         self.is_locked = True
         self.numbers_assigned_at = timezone.now()
         self.save(update_fields=['home_numbers', 'away_numbers', 'is_locked', 'numbers_assigned_at'])
+
+    def regenerate_access_token(self):
+        """Rotate the private board link token.
+
+        Args:
+            None.
+
+        Returns:
+            str: Newly saved access token.
+
+        Raises:
+            RuntimeError: If a unique token cannot be generated after repeated attempts.
+        """
+        for _ in range(10):
+            token = _gen_token()
+            exists = Board.objects.filter(access_token=token).exclude(pk=self.pk).exists()
+            if not exists:
+                self.access_token = token
+                self.save(update_fields=['access_token'])
+                return token
+        raise RuntimeError('Could not generate a unique board access token.')
 
     @property
     def claimed_count(self):
@@ -152,6 +212,18 @@ class Square(models.Model):
     @property
     def is_claimed(self):
         return bool(self.name)
+
+    @property
+    def grid_label(self):
+        """Return the participant-facing square label.
+
+        Args:
+            None.
+
+        Returns:
+            str: Neutral grid label that does not reveal final scoring digits.
+        """
+        return f'{chr(65 + self.col)}{self.row + 1}'
 
     def mark_paid(self, admin_user=None):
         self.paid = True

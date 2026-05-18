@@ -22,7 +22,7 @@
 
   <!-- Grid picker -->
   <div class="flex-1 overflow-x-auto">
-    <p class="text-sm text-gray-600 mb-3 font-medium">Click squares to select / deselect:</p>
+    <p class="text-sm text-gray-600 mb-3 font-medium">Pick slots; scoring numbers are assigned after lock:</p>
     <table class="border-collapse text-xs" style="table-layout: fixed;" id="claim-grid">
       <colgroup>
         <col style="width: 20px;"><!-- row header -->
@@ -34,16 +34,18 @@
         <tr>
           <th></th>
           {% for cell in grid.0 %}
-          <th class="h-5 text-center text-gray-400 border border-gray-200 bg-gray-50">{{ forloop.counter0 }}</th>
+          <th class="h-5 text-center text-gray-400 border border-gray-200 bg-gray-50">{{ cell.col_label }}</th>
           {% endfor %}
         </tr>
       </thead>
       <tbody>
         {% for row in grid %}
         <tr>
-          <td class="text-center text-gray-400 border border-gray-200 bg-gray-50">{{ forloop.counter0 }}</td>
+          <td class="text-center text-gray-400 border border-gray-200 bg-gray-50">{{ row.0.row_label }}</td>
           {% for cell in row %}
           <td data-row="{{ cell.row }}" data-col="{{ cell.col }}"
+              aria-label="{{ cell.label }}"
+              title="{{ cell.label }}"
               class="h-12 border border-gray-200 text-center align-middle relative transition
                 {% if cell.is_available %}
                   cursor-pointer hover:bg-blue-100 bg-white available-cell
