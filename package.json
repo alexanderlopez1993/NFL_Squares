@@ -1,0 +1,16 @@
+{
+  "name": "nfl-squares",
+  "private": true,
+  "scripts": {
+    "build:vendor": "mkdir -p ./static/vendor && cp ./node_modules/htmx.org/dist/htmx.min.js ./static/vendor/htmx.min.js",
+    "build:css": "npm run build:vendor && tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --minify",
+    "watch:css": "tailwindcss -i ./assets/css/app.css -o ./static/css/app.css --watch"
+  },
+  "dependencies": {
+    "htmx.org": "2.0.10"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

@@ -3,20 +3,20 @@ Management command to sync the NFL schedule from ESPN.
 
 Usage:
     python manage.py sync_schedule                         # current week
-    python manage.py sync_schedule --season 2025 --week 1 # specific week
+    python manage.py sync_schedule --season 2026 --week 1 # specific week
     python manage.py sync_schedule --postseason            # all playoff rounds
     python manage.py sync_schedule --all-weeks             # full regular season
 """
 from django.core.management.base import BaseCommand
 
-from games.espn import fetch_scoreboard, fetch_postseason, upsert_game
+from games.espn import current_nfl_season, fetch_scoreboard, fetch_postseason, upsert_game
 
 
 class Command(BaseCommand):
     help = 'Sync NFL schedule from ESPN'
 
     def add_arguments(self, parser):
-        parser.add_argument('--season', type=int, default=2025)
+        parser.add_argument('--season', type=int, default=current_nfl_season())
         parser.add_argument('--week', type=int)
         parser.add_argument('--postseason', action='store_true',
                             help='Sync all postseason rounds (Wild Card through Super Bowl)')

@@ -21,9 +21,22 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      USE_SQLITE: "False"
+      DB_NAME: ${DB_NAME:-nfl_squares}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: ${DB_PORT:-5432}
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz/', timeout=3).read()\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&

@@ -20,14 +20,7 @@
 </div>
 
 <!-- Score panel (HTMX-polled when game is active) -->
-<div id="score-panel"
-  {% if game.is_active %}
-  hx-get="{% url 'boards:scores_partial' board.access_token %}"
-  hx-trigger="every 60s"
-  hx-swap="outerHTML"
-  {% endif %}>
-  {% include "boards/partials/game_score.html" %}
-</div>
+{% include "boards/partials/game_score.html" %}
 
 <!-- Stats strip -->
 <div class="flex flex-wrap gap-6 text-sm text-gray-600 my-4 p-3 bg-white rounded-lg border border-gray-200">

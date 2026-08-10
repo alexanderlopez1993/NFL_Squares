@@ -25,7 +25,7 @@
               <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
             LIVE &mdash;
-            {% if game.period %}Q{{ game.period }}{% endif %}
+            {% if game.period > 5 %}{{ game.period|add:"-4" }}OT{% elif game.period == 5 %}OT{% elif game.period %}Q{{ game.period }}{% endif %}
             {% if game.display_clock %} {{ game.display_clock }}{% endif %}
           </span>
         {% elif game.status == 'final' %}
@@ -66,21 +66,21 @@
       <tbody>
         <tr class="border-t border-gray-100">
           <td class="py-1 px-2 font-medium text-left">{{ game.away_abbr }}</td>
-          <td class="py-1 px-2">{{ game.away_q1|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.away_q2|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.away_q3|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.away_q4|default:"—" }}</td>
-          {% if game.home_ot is not None %}<td class="py-1 px-2">{{ game.away_ot|default:"0" }}</td>{% endif %}
-          <td class="py-1 px-2 font-bold">{{ game.away_total|default:"—" }}</td>
+          <td class="py-1 px-2">{% if game.away_q1 is not None %}{{ game.away_q1 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.away_q2 is not None %}{{ game.away_q2 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.away_q3 is not None %}{{ game.away_q3 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.away_q4 is not None %}{{ game.away_q4 }}{% else %}—{% endif %}</td>
+          {% if game.home_ot is not None %}<td class="py-1 px-2">{% if game.away_ot is not None %}{{ game.away_ot }}{% else %}0{% endif %}</td>{% endif %}
+          <td class="py-1 px-2 font-bold">{% if game.away_total is not None %}{{ game.away_total }}{% else %}—{% endif %}</td>
         </tr>
         <tr class="border-t border-gray-100">
           <td class="py-1 px-2 font-medium text-left">{{ game.home_abbr }}</td>
-          <td class="py-1 px-2">{{ game.home_q1|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.home_q2|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.home_q3|default:"—" }}</td>
-          <td class="py-1 px-2">{{ game.home_q4|default:"—" }}</td>
-          {% if game.home_ot is not None %}<td class="py-1 px-2">{{ game.home_ot|default:"0" }}</td>{% endif %}
-          <td class="py-1 px-2 font-bold">{{ game.home_total|default:"—" }}</td>
+          <td class="py-1 px-2">{% if game.home_q1 is not None %}{{ game.home_q1 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.home_q2 is not None %}{{ game.home_q2 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.home_q3 is not None %}{{ game.home_q3 }}{% else %}—{% endif %}</td>
+          <td class="py-1 px-2">{% if game.home_q4 is not None %}{{ game.home_q4 }}{% else %}—{% endif %}</td>
+          {% if game.home_ot is not None %}<td class="py-1 px-2">{{ game.home_ot }}</td>{% endif %}
+          <td class="py-1 px-2 font-bold">{% if game.home_total is not None %}{{ game.home_total }}{% else %}—{% endif %}</td>
         </tr>
       </tbody>
     </table>

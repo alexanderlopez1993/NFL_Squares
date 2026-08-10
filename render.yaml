@@ -1,0 +1,134 @@
+services:
+  - type: web
+    name: nfl-squares
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    preDeployCommand: python manage.py migrate --noinput
+    healthCheckPath: /healthz/
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: DEBUG
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nfl-squares-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: SERVER_EMAIL
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: PRIVACY_CONTACT_EMAIL
+        sync: false
+      - key: DATA_RETENTION_DAYS
+        value: "30"
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: ADMIN_OAUTH_STAFF_EMAILS
+        sync: false
+      - key: ADMIN_OAUTH_STAFF_DOMAINS
+        sync: false
+      - key: ADMIN_OAUTH_SUPERUSER_EMAILS
+        sync: false
+      - key: SECURE_HSTS_SECONDS
+        value: "3600"
+      - key: SECURE_HSTS_INCLUDE_SUBDOMAINS
+        value: "False"
+      - key: SECURE_HSTS_PRELOAD
+        value: "False"
+      - key: DB_CONN_MAX_AGE
+        value: "60"
+      - key: MAX_SQUARES_PER_PARTICIPANT
+        value: "10"
+      - key: CLAIM_COOLDOWN_SECONDS
+        value: "2"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: WEB_CONCURRENCY
+        value: "2"
+      - key: GUNICORN_TIMEOUT
+        value: "30"
+
+  - type: cron
+    name: nfl-squares-score-sync
+    runtime: docker
+    plan: starter
+    schedule: "*/5 * * * *"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python manage.py sync_scores
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: DEBUG
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nfl-squares-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: cron
+    name: nfl-squares-schedule-sync
+    runtime: docker
+    plan: starter
+    schedule: "0 10 * * *"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python manage.py sync_schedule
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: DEBUG
+        value: "False"
+      - key: USE_SQLITE
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nfl-squares-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: EMAIL_BACKEND
+        value: django.core.mail.backends.smtp.EmailBackend
+      - key: LOG_LEVEL
+        value: INFO
+
+databases:
+  - name: nfl-squares-db
+    plan: basic-256mb
+    databaseName: nfl_squares
+    user: nfl_squares
+    ipAllowList: []

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Privacy — NFL Squares{% endblock %}
+{% block content %}
+<article class="mx-auto max-w-2xl border border-gray-200 bg-white p-6 sm:p-8">
+  <h1 class="text-2xl font-bold text-gray-900">Participant privacy</h1>
+  <p class="mt-4 text-sm leading-6 text-gray-700">
+    This private-pool app records the name you enter, your optional email address,
+    the squares you claim, claim time, and payment-confirmation status.
+  </p>
+
+  <h2 class="mt-6 font-semibold text-gray-900">Who can see it</h2>
+  <p class="mt-2 text-sm leading-6 text-gray-700">
+    Your name, claimed squares, and payment status are visible to anyone who has
+    the board link. Your email address is visible only to authorized commissioners.
+    Treat a board link like a private invitation and do not repost it publicly.
+  </p>
+
+  <h2 class="mt-6 font-semibold text-gray-900">Why it is used</h2>
+  <p class="mt-2 text-sm leading-6 text-gray-700">
+    Commissioners use this information only to run the pool, confirm payments,
+    contact participants about the board, and determine payouts. The app does not
+    process payments or sell participant information.
+  </p>
+
+  <h2 class="mt-6 font-semibold text-gray-900">Correction and deletion</h2>
+  <p class="mt-2 text-sm leading-6 text-gray-700">
+    Ask the commissioner who shared the board to correct or release a claim. The
+    operator's target is to delete completed boards within {{ retention_days }} days
+    after payouts are settled, unless records must be retained for a legitimate reason.
+    {% if contact_email %}Questions may also be sent to
+    <a href="mailto:{{ contact_email }}" class="text-blue-700 underline">{{ contact_email }}</a>.{% endif %}
+  </p>
+</article>
+{% endblock %}

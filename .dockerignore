@@ -1,0 +1,17 @@
+.env
+.git
+.codegraph
+.playwright-cli/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+node_modules/
+staticfiles/
+logs/
+.DS_Store
+.local_server.pid
+*.app/
+.DS_Store

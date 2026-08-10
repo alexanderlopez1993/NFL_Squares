@@ -1,0 +1,55 @@
+name: Publish Container
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment to use for approval and secrets.
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - production
+      image_tag:
+        description: Image tag to publish.
+        required: true
+        default: dev
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          case "$IMAGE_TAG" in
+            ""|*[!a-zA-Z0-9._-]*)
+              echo "Image tag may only contain letters, numbers, dots, underscores, and hyphens."
+              exit 1
+              ;;
+          esac
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          REPOSITORY: ${{ github.repository }}
+          SHA_TAG: ${{ github.sha }}
+        run: |
+          image_name="$(echo "ghcr.io/${REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          docker build -t "${image_name}:${IMAGE_TAG}" -t "${image_name}:${SHA_TAG}" .
+          docker push "${image_name}:${IMAGE_TAG}"
+          docker push "${image_name}:${SHA_TAG}"

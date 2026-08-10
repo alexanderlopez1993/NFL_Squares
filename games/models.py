@@ -28,6 +28,7 @@ class NFLGame(models.Model):
     season_type = models.IntegerField(default=SEASON_TYPE_REGULAR)
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SCHEDULED)
+    espn_status = models.CharField(max_length=40, blank=True)
     period = models.IntegerField(default=0)  # current quarter/period
     display_clock = models.CharField(max_length=10, blank=True)
 
@@ -75,6 +76,41 @@ class NFLGame(models.Model):
                 return None
             total += val
         return total
+
+    def scores_for_payout(self, quarter):
+        """Return the official cumulative scores for a payout checkpoint.
+
+        The fourth-quarter payout represents the final game result. Once ESPN
+        marks a game final, its totals include every overtime period and are
+        therefore authoritative over the four regulation line scores.
+
+        Args:
+            quarter (int): Payout checkpoint from 1 through 4.
+
+        Returns:
+            tuple[int | None, int | None]: Home and away cumulative scores, or
+            ``None`` values until the checkpoint has been completed.
+
+        Raises:
+            ValueError: If the requested checkpoint is outside quarters 1–4.
+        """
+        if quarter not in range(1, 5):
+            raise ValueError('Payout quarter must be between 1 and 4.')
+        if quarter == 4:
+            if self.is_final:
+                return self.home_total, self.away_total
+            return None, None
+        checkpoint_complete = (
+            self.is_final
+            or self.period > quarter
+            or (
+                self.period == quarter
+                and self.espn_status in {'STATUS_END_PERIOD', 'STATUS_HALFTIME'}
+            )
+        )
+        if not checkpoint_complete:
+            return None, None
+        return self.home_score_after_q(quarter), self.away_score_after_q(quarter)
 
     @property
     def is_active(self):

@@ -1,10 +1,11 @@
+import logging
 import time
 
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.core.mail import send_mail
-from django.db import OperationalError, transaction
+from django.db import IntegrityError, OperationalError, transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -13,6 +14,7 @@ from .models import Board, Square
 
 CLAIM_RETRY_ATTEMPTS = 3
 CLAIM_RETRY_DELAY_SECONDS = 0.15
+logger = logging.getLogger(__name__)
 
 
 def _board_public_url(board, request=None):
@@ -53,9 +55,41 @@ def _board_summary(board):
     }
 
 
+def _boards_for_user(user):
+    """Return boards a commissioner is authorized to manage.
+
+    Superusers retain operational access to every board. Other staff members
+    can only use the streamlined dashboard for boards they created.
+
+    Args:
+        user (User): Authenticated Django staff user.
+
+    Returns:
+        QuerySet[Board]: Authorized boards for the user.
+    """
+    boards = Board.objects.all()
+    if user.is_superuser:
+        return boards
+    return boards.filter(created_by=user)
+
+
+def _private_token_response(response):
+    """Prevent tokenized board pages from being cached or leaking referrers.
+
+    Args:
+        response (HttpResponse): Rendered participant response.
+
+    Returns:
+        HttpResponse: Response with private-link safety headers.
+    """
+    response['Cache-Control'] = 'private, no-store'
+    response['Referrer-Policy'] = 'no-referrer'
+    return response
+
+
 @staff_member_required(login_url='admin:login')
 def board_list(request):
-    boards = Board.objects.select_related('game').order_by('-created_at')
+    boards = _boards_for_user(request.user).select_related('game').order_by('-created_at')
     return render(request, 'boards/board_list.html', {'boards': boards})
 
 
@@ -81,7 +115,7 @@ def dashboard(request):
         form = DashboardBoardForm()
 
     boards = (
-        Board.objects
+        _boards_for_user(request.user)
         .select_related('game', 'created_by')
         .prefetch_related('squares')
         .order_by('-created_at')
@@ -115,7 +149,7 @@ def dashboard_board(request, token):
         HttpResponse: Board dashboard page or redirect after a dashboard action.
     """
     board = get_object_or_404(
-        Board.objects.select_related('game', 'created_by').prefetch_related('squares'),
+        _boards_for_user(request.user).select_related('game', 'created_by').prefetch_related('squares'),
         access_token=token,
     )
     invite_form = InviteParticipantForm()
@@ -135,17 +169,29 @@ def dashboard_board(request, token):
             messages.success(request, 'Public board link regenerated.')
             return redirect('boards:dashboard_detail', token=board.access_token)
 
-        if action in {'mark_paid', 'mark_unpaid'}:
+        if action in {'mark_paid', 'mark_unpaid', 'release_claim'}:
             square = get_object_or_404(Square, pk=request.POST.get('square_id'), board=board)
             if action == 'mark_paid':
                 square.mark_paid(admin_user=request.user)
                 messages.success(request, f'Marked {square.name} as paid.')
-            else:
+            elif action == 'mark_unpaid':
                 square.paid = False
                 square.paid_at = None
                 square.paid_by = None
                 square.save(update_fields=['paid', 'paid_at', 'paid_by'])
                 messages.success(request, f'Marked {square.name} as unpaid.')
+            else:
+                participant_name = square.name
+                square.name = ''
+                square.email = ''
+                square.claimed_at = None
+                square.paid = False
+                square.paid_at = None
+                square.paid_by = None
+                square.save(update_fields=[
+                    'name', 'email', 'claimed_at', 'paid', 'paid_at', 'paid_by',
+                ])
+                messages.success(request, f'Released {participant_name or "the participant"} square.')
             return redirect('boards:dashboard_detail', token=token)
 
         if action == 'send_invite':
@@ -163,14 +209,23 @@ def dashboard_board(request, token):
                 )
                 if board.notes:
                     body += f'\nPayment info:\n{board.notes}\n'
-                send_mail(
-                    subject=f'Join NFL Squares: {board.name}',
-                    message=body,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[to_email],
+                try:
+                    sent_count = send_mail(
+                        subject=f'Join NFL Squares: {board.name}',
+                        message=body,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[to_email],
+                    )
+                except Exception:
+                    logger.exception('Participant invite failed for board %s.', board.pk)
+                    sent_count = 0
+                if sent_count:
+                    messages.success(request, f'Invite sent to {to_email}.')
+                    return redirect('boards:dashboard_detail', token=token)
+                messages.error(
+                    request,
+                    'The invite could not be sent. Check the email configuration and try again.',
                 )
-                messages.success(request, f'Invite sent to {to_email}.')
-                return redirect('boards:dashboard_detail', token=token)
 
     summary = _board_summary(board)
     public_url = _board_public_url(board, request)
@@ -239,7 +294,7 @@ def board_detail(request, token):
         'paid_count': board.paid_count,
         'payout_schedule': payout_schedule,
     }
-    return render(request, 'boards/board_detail.html', context)
+    return _private_token_response(render(request, 'boards/board_detail.html', context))
 
 
 def claim_squares(request, token):
@@ -250,7 +305,16 @@ def claim_squares(request, token):
         return redirect('boards:detail', token=token)
 
     if request.method == 'POST':
-        form = ClaimSquaresForm(request.POST)
+        last_claim_at = request.session.get('last_claim_at')
+        elapsed = timezone.now().timestamp() - last_claim_at if last_claim_at else None
+        if elapsed is not None and elapsed < settings.CLAIM_COOLDOWN_SECONDS:
+            messages.error(request, 'Please wait a moment before submitting another claim.')
+            return redirect('boards:claim', token=token)
+
+        form = ClaimSquaresForm(
+            request.POST,
+            max_squares=settings.MAX_SQUARES_PER_PARTICIPANT,
+        )
         if form.is_valid():
             name = form.cleaned_data['name']
             email = form.cleaned_data['email']
@@ -266,7 +330,15 @@ def claim_squares(request, token):
                             messages.error(request, 'This board is locked — no new claims are accepted.')
                             return redirect('boards:detail', token=token)
 
+                        existing_claims = locked_board.squares.exclude(name='')
+                        if email:
+                            existing_claims = existing_claims.filter(email__iexact=email)
+                        else:
+                            existing_claims = existing_claims.filter(name__iexact=name)
+                        existing_claim_count = existing_claims.count()
+
                         # Lock each existing square before checking ownership so concurrent claims cannot overwrite it.
+                        available_squares = []
                         for row, col in pairs:
                             square, created = Square.objects.select_for_update().get_or_create(
                                 board=locked_board, row=row, col=col,
@@ -274,14 +346,36 @@ def claim_squares(request, token):
                             if not created and square.is_claimed:
                                 already_taken.append(f"({row},{col})")
                             else:
-                                square.name = name
-                                square.email = email
-                                square.claimed_at = timezone.now()
-                                square.save(update_fields=['name', 'email', 'claimed_at'])
-                                claimed.append(square)
+                                available_squares.append(square)
+
+                        if (
+                            existing_claim_count + len(available_squares)
+                            > settings.MAX_SQUARES_PER_PARTICIPANT
+                        ):
+                            remaining = max(
+                                settings.MAX_SQUARES_PER_PARTICIPANT - existing_claim_count,
+                                0,
+                            )
+                            messages.error(
+                                request,
+                                f'You can claim {remaining} more square(s) on this board.',
+                            )
+                            return redirect('boards:claim', token=token)
+
+                        for square in available_squares:
+                            square.name = name
+                            square.email = email
+                            square.claimed_at = timezone.now()
+                            square.save(update_fields=['name', 'email', 'claimed_at'])
+                            claimed.append(square)
                     break
-                except OperationalError:
+                except (IntegrityError, OperationalError):
                     if attempt == CLAIM_RETRY_ATTEMPTS - 1:
+                        logger.warning(
+                            'Participant claim exhausted retries for board %s.',
+                            board.pk,
+                            exc_info=True,
+                        )
                         messages.error(
                             request,
                             'Another claim is being processed. Please try again in a moment.',
@@ -295,6 +389,7 @@ def claim_squares(request, token):
                     f"{len(already_taken)} square(s) were already taken and skipped: {', '.join(already_taken)}"
                 )
             if claimed:
+                request.session['last_claim_at'] = timezone.now().timestamp()
                 messages.success(
                     request,
                     f"You claimed {len(claimed)} square(s)! "
@@ -306,7 +401,10 @@ def claim_squares(request, token):
     else:
         # Pre-select a square if passed via query param
         preselect = request.GET.get('sq', '')  # e.g. "3,7"
-        form = ClaimSquaresForm(initial={'squares': preselect})
+        form = ClaimSquaresForm(
+            initial={'squares': preselect},
+            max_squares=settings.MAX_SQUARES_PER_PARTICIPANT,
+        )
 
     # Build available squares for the template grid
     existing = {(s.row, s.col): s for s in board.squares.all()}
@@ -326,18 +424,19 @@ def claim_squares(request, token):
             })
         grid.append(grid_row)
 
-    return render(request, 'boards/claim_form.html', {
+    return _private_token_response(render(request, 'boards/claim_form.html', {
         'board': board,
         'form': form,
         'grid': grid,
-    })
+        'max_squares': settings.MAX_SQUARES_PER_PARTICIPANT,
+    }))
 
 
 def game_score_partial(request, token):
     """HTMX partial — returns just the score panel for live polling."""
     board = get_object_or_404(Board, access_token=token)
-    return render(request, 'boards/partials/game_score.html', {
+    return _private_token_response(render(request, 'boards/partials/game_score.html', {
         'board': board,
         'game': board.game,
         'quarter_results': board.quarter_results() if board.is_locked else [],
-    })
+    }))

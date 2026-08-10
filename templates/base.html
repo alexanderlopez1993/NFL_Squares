@@ -1,19 +1,13 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-gray-50">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}NFL Squares{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <style>
-    /* Writing-mode helper for rotated table header */
-    .vertical-text {
-      writing-mode: vertical-rl;
-      transform: rotate(180deg);
-      white-space: nowrap;
-    }
-  </style>
+  <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script src="{% static 'vendor/htmx.min.js' %}"></script>
 </head>
 <body class="h-full flex flex-col">
 
@@ -51,7 +45,8 @@
   </main>
 
   <footer class="text-center text-xs text-gray-400 py-4">
-    NFL Squares &mdash; Scores via ESPN unofficial API
+    NFL Squares &mdash; Scores via ESPN unofficial API &middot;
+    <a href="{% url 'privacy' %}" class="underline hover:text-gray-600">Privacy</a>
   </footer>
 
 </body>

@@ -2,7 +2,7 @@
 ESPN unofficial API client for NFL score/schedule data.
 
 Endpoints used:
-  Scoreboard (current week):  http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
+  Scoreboard (current week):  https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
   Scoreboard (specific week): ...scoreboard?dates=YYYY&seasontype=2&week=N
   Postseason by date range:   ...scoreboard?dates=YYYYMMDD-YYYYMMDD&limit=100
 
@@ -21,18 +21,17 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-ESPN_SCOREBOARD = 'http://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'
+ESPN_SCOREBOARD = getattr(
+    settings,
+    'ESPN_SCOREBOARD_URL',
+    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard',
+)
 TIMEOUT = getattr(settings, 'ESPN_REQUEST_TIMEOUT', 10)
 
-# ESPN blocks requests without browser-like headers
+# Let requests send its native user agent. ESPN currently rejects browser-style
+# and unknown application user agents for this public JSON endpoint.
 REQUEST_HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/120.0.0.0 Safari/537.36'
-    ),
     'Accept': 'application/json',
-    'Referer': 'https://www.espn.com/',
 }
 
 # Postseason week numbers (continuing from regular season week 18)
@@ -53,17 +52,52 @@ STATUS_MAP = {
 
 
 def _get(url, params=None):
+    """Fetch and decode a JSON response from ESPN.
+
+    Args:
+        url (str): ESPN endpoint to request.
+        params (dict[str, object] | None): Optional query parameters.
+
+    Returns:
+        dict | None: Decoded response data, or ``None`` after a request or
+        decoding failure.
+    """
     try:
         r = requests.get(url, params=params, headers=REQUEST_HEADERS, timeout=TIMEOUT)
         r.raise_for_status()
         return r.json()
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
         logger.error('ESPN API request failed: %s', e)
         return None
 
 
+def current_nfl_season(reference_date=None):
+    """Return the NFL season year appropriate for a calendar date.
+
+    January and February postseason games belong to the previous year's NFL
+    season. March through December use the current calendar year so preseason
+    schedule setup does not retain a stale hard-coded default.
+
+    Args:
+        reference_date (date | None): Date to evaluate; defaults to the local
+            date configured by Django.
+
+    Returns:
+        int: NFL season year.
+    """
+    reference_date = reference_date or timezone.localdate()
+    return reference_date.year - 1 if reference_date.month < 3 else reference_date.year
+
+
 def _parse_competitor(comp):
-    """Extract score info from a competitor dict."""
+    """Extract score information from an ESPN competitor payload.
+
+    Args:
+        comp (dict): Raw ESPN competitor object.
+
+    Returns:
+        dict[str, object]: Normalized team, total, and period scores.
+    """
     linescores = comp.get('linescores', [])
     quarters = [int(ls.get('value', 0)) for ls in linescores]
 
@@ -76,12 +110,20 @@ def _parse_competitor(comp):
         'q2': quarters[1] if len(quarters) > 1 else None,
         'q3': quarters[2] if len(quarters) > 2 else None,
         'q4': quarters[3] if len(quarters) > 3 else None,
-        'ot': quarters[4] if len(quarters) > 4 else None,
+        'ot': sum(quarters[4:]) if len(quarters) > 4 else None,
     }
 
 
 def parse_event(event):
-    """Parse a raw ESPN event dict into a normalized game dict."""
+    """Parse a raw ESPN event into normalized game and score fields.
+
+    Args:
+        event (dict[str, object]): Raw ESPN scoreboard event.
+
+    Returns:
+        dict[str, object] | None: Normalized game data, or ``None`` when the
+        payload does not include both competitors.
+    """
     status_obj = event.get('status', {})
     status_type = status_obj.get('type', {})
     espn_status = status_type.get('name', 'STATUS_SCHEDULED')
@@ -120,9 +162,10 @@ def parse_event(event):
         'away_abbr': away['abbr'],
         'game_date': game_date,
         'week': week_obj.get('number'),
-        'season': season_obj.get('year', 2025),
+        'season': season_obj.get('year') or current_nfl_season(game_date.date()),
         'season_type': season_obj.get('type', 2),
         'status': our_status,
+        'espn_status': espn_status,
         'period': status_obj.get('period', 0),
         'display_clock': status_obj.get('displayClock', ''),
         'home_q1': home['q1'],
@@ -209,11 +252,12 @@ def upsert_game(game_data):
     """
     from games.models import NFLGame
 
-    espn_id = game_data.pop('espn_id')
-    game_data['last_synced'] = timezone.now()
+    defaults = game_data.copy()
+    espn_id = defaults.pop('espn_id')
+    defaults['last_synced'] = timezone.now()
 
     game, created = NFLGame.objects.update_or_create(
         espn_id=espn_id,
-        defaults=game_data,
+        defaults=defaults,
     )
     return game, created

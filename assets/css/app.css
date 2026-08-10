@@ -1,0 +1,12 @@
+@import "tailwindcss" source(none);
+
+@source "../../templates";
+@source "../../boards";
+@source "../../games";
+@source "../../nfl_squares";
+
+.vertical-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}

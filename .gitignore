@@ -6,6 +6,10 @@ staticfiles/
 *.sqlite3
 .DS_Store
 .openclaw/
+.playwright-cli/
 .local_server.pid
 logs/
 *.app/
+node_modules/
+
+.codegraph/

@@ -1,0 +1,8 @@
+django>=5.1,<6.0
+django-allauth[socialaccount]>=65.14.1,<66.0
+dj-database-url>=2.2
+gunicorn>=21.0
+psycopg2-binary>=2.9
+python-decouple>=3.8
+requests>=2.31
+whitenoise>=6.7

@@ -9,6 +9,17 @@ FIELD_CLASS = 'w-full border border-gray-300 rounded px-3 py-2 focus:outline-non
 
 
 class ClaimSquaresForm(forms.Form):
+    """Collect and validate a participant's square selections.
+
+    Args:
+        *args (Any): Positional arguments forwarded to forms.Form.
+        max_squares (int): Maximum squares allowed in one submission.
+        **kwargs (Any): Keyword arguments forwarded to forms.Form.
+
+    Returns:
+        None.
+    """
+
     name = forms.CharField(
         max_length=100,
         label='Your Name',
@@ -30,6 +41,48 @@ class ClaimSquaresForm(forms.Form):
         widget=forms.HiddenInput(),
         help_text='Comma-separated list of row,col pairs e.g. "0,3;2,7"',
     )
+    privacy_acknowledged = forms.BooleanField(
+        required=True,
+        label='I understand my name and payment status are visible to anyone with this board link.',
+    )
+    website = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(attrs={
+            'tabindex': '-1',
+            'autocomplete': 'off',
+        }),
+    )
+
+    def __init__(self, *args, max_squares=10, **kwargs):
+        """Initialize the form with a configurable selection cap.
+
+        Args:
+            *args (Any): Positional arguments forwarded to forms.Form.
+            max_squares (int): Maximum squares accepted per submission.
+            **kwargs (Any): Keyword arguments forwarded to forms.Form.
+
+        Returns:
+            None.
+        """
+        super().__init__(*args, **kwargs)
+        self.max_squares = max_squares
+
+    def clean_website(self):
+        """Reject automated submissions that populate the hidden honeypot.
+
+        Args:
+            None.
+
+        Returns:
+            str: Empty honeypot value for a normal browser submission.
+
+        Raises:
+            forms.ValidationError: If an automated client fills the hidden field.
+        """
+        website = self.cleaned_data.get('website', '').strip()
+        if website:
+            raise forms.ValidationError('Unable to submit this claim.')
+        return website
 
     def clean_squares(self):
         """Parse selected board coordinates from the hidden form field.
@@ -64,6 +117,10 @@ class ClaimSquaresForm(forms.Form):
                 raise forms.ValidationError(f'Invalid square: "{part}"')
         if not pairs:
             raise forms.ValidationError('Please select at least one square.')
+        if len(pairs) > self.max_squares:
+            raise forms.ValidationError(
+                f'You can claim at most {self.max_squares} squares per board.'
+            )
         return pairs
 
 

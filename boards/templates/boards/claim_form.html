@@ -43,17 +43,21 @@
         <tr>
           <td class="text-center text-gray-400 border border-gray-200 bg-gray-50">{{ row.0.row_label }}</td>
           {% for cell in row %}
-          <td data-row="{{ cell.row }}" data-col="{{ cell.col }}"
-              aria-label="{{ cell.label }}"
-              title="{{ cell.label }}"
-              class="h-12 border border-gray-200 text-center align-middle relative transition
-                {% if cell.is_available %}
-                  cursor-pointer hover:bg-blue-100 bg-white available-cell
-                {% else %}
-                  bg-gray-100 text-gray-400 cursor-not-allowed
-                {% endif %}
-                ">
-            {% if not cell.is_available %}
+          <td class="h-12 border border-gray-200 text-center align-middle relative transition
+                {% if cell.is_available %}bg-white{% else %}bg-gray-100 text-gray-400{% endif %}">
+            {% if cell.is_available %}
+              <button type="button"
+                      data-row="{{ cell.row }}"
+                      data-col="{{ cell.col }}"
+                      data-label="{{ cell.label }}"
+                      aria-label="Select slot {{ cell.label }}"
+                      aria-pressed="false"
+                      title="{{ cell.label }}"
+                      class="available-cell h-full w-full cursor-pointer bg-white text-gray-300 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">
+                <span class="selection-mark hidden text-sm font-bold text-blue-800" aria-hidden="true">&#10003;</span>
+                <span class="sr-only">Select slot {{ cell.label }}</span>
+              </button>
+            {% else %}
               <span class="text-[10px] leading-tight px-0.5">{{ cell.square.name|truncatechars:8 }}</span>
             {% endif %}
           </td>
@@ -67,9 +71,14 @@
 
   <!-- Claim form -->
   <div class="lg:w-80">
-    <form method="post" id="claim-form" class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+    <form method="post"
+          id="claim-form"
+          data-entry-fee="{{ board.entry_fee|floatformat:2 }}"
+          data-max-squares="{{ max_squares }}"
+          class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
       {% csrf_token %}
       {{ form.squares }}
+      {{ form.website }}
 
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">{{ form.name.label }}</label>
@@ -91,34 +100,69 @@
       <p class="text-red-600 text-xs">{{ form.squares.errors|join:", " }}</p>
       {% endif %}
 
+      <div class="border border-blue-100 bg-blue-50 p-3">
+        <label class="flex items-start gap-2 text-xs text-blue-950">
+          {{ form.privacy_acknowledged }}
+          <span>{{ form.privacy_acknowledged.label }}</span>
+        </label>
+        {% if form.privacy_acknowledged.errors %}
+        <p class="text-red-600 text-xs mt-1">{{ form.privacy_acknowledged.errors|join:", " }}</p>
+        {% endif %}
+        <p class="mt-2 text-xs text-blue-800">
+          Your email is only visible to the commissioner.
+          <a href="{% url 'privacy' %}" target="_blank" rel="noopener" class="underline">Privacy notice</a>
+        </p>
+      </div>
+
       <div id="selected-summary" class="text-sm text-blue-700 font-medium min-h-[1.25rem]"></div>
 
-      <button type="submit" id="submit-btn"
+      <button type="submit" id="submit-btn" disabled
               class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold py-2.5 rounded-lg transition">
         Claim Selected Squares
       </button>
 
       <p class="text-xs text-gray-400 text-center">
-        Your squares are reserved once the admin confirms payment.
+        Maximum {{ max_squares }} squares per participant. Your squares are reserved once the commissioner confirms payment.
       </p>
     </form>
   </div>
 
 </div>
 
+<div class="h-24 lg:hidden" aria-hidden="true"></div>
+<div class="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur lg:hidden">
+  <div class="mx-auto flex max-w-7xl items-center gap-3">
+    <div class="min-w-0 flex-1">
+      <div class="text-xs font-medium text-gray-500">Selected</div>
+      <div id="mobile-selected-summary" class="truncate text-sm font-semibold text-blue-800">No squares selected</div>
+    </div>
+    <button type="submit"
+            id="mobile-submit-btn"
+            form="claim-form"
+            disabled
+            class="shrink-0 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:bg-gray-300">
+      Claim
+    </button>
+  </div>
+</div>
+
 <script>
 (function () {
-  const selected = new Set();
+  const selected = new Map();
+  const form = document.getElementById('claim-form');
   const hiddenInput = document.querySelector('input[name="squares"]');
   const summary = document.getElementById('selected-summary');
+  const mobileSummary = document.getElementById('mobile-selected-summary');
   const submitBtn = document.getElementById('submit-btn');
+  const mobileSubmitBtn = document.getElementById('mobile-submit-btn');
+  const entryFee = Number(form.dataset.entryFee || 0);
+  const maxSquares = Number(form.dataset.maxSquares || 10);
 
-  // Pre-select from query param
   const initial = hiddenInput.value.trim();
   if (initial) {
     initial.split(';').forEach(pair => {
       const [r, c] = pair.split(',').map(Number);
-      const cell = document.querySelector(`td[data-row="${r}"][data-col="${c}"]`);
+      const cell = document.querySelector(`button[data-row="${r}"][data-col="${c}"]`);
       if (cell && cell.classList.contains('available-cell')) {
         select(cell, `${r},${c}`);
       }
@@ -131,33 +175,52 @@
       if (selected.has(key)) {
         deselect(cell, key);
       } else {
+        if (selected.size >= maxSquares) {
+          summary.textContent = `Maximum ${maxSquares} squares per participant.`;
+          mobileSummary.textContent = `Maximum ${maxSquares} selected`;
+          return;
+        }
         select(cell, key);
       }
     });
   });
 
   function select(cell, key) {
-    selected.add(key);
-    cell.classList.add('bg-blue-200', 'ring-2', 'ring-blue-500');
+    selected.set(key, cell.dataset.label || key);
+    cell.setAttribute('aria-pressed', 'true');
+    cell.setAttribute('aria-label', `Deselect slot ${cell.dataset.label || key}`);
+    cell.querySelector('.selection-mark').classList.remove('hidden');
+    cell.classList.add('bg-blue-200', 'ring-2', 'ring-inset', 'ring-blue-500');
     cell.classList.remove('hover:bg-blue-100', 'bg-white');
     sync();
   }
 
   function deselect(cell, key) {
     selected.delete(key);
-    cell.classList.remove('bg-blue-200', 'ring-2', 'ring-blue-500');
+    cell.setAttribute('aria-pressed', 'false');
+    cell.setAttribute('aria-label', `Select slot ${cell.dataset.label || key}`);
+    cell.querySelector('.selection-mark').classList.add('hidden');
+    cell.classList.remove('bg-blue-200', 'ring-2', 'ring-inset', 'ring-blue-500');
     cell.classList.add('hover:bg-blue-100', 'bg-white');
     sync();
   }
 
   function sync() {
-    hiddenInput.value = Array.from(selected).join(';');
+    hiddenInput.value = Array.from(selected.keys()).join(';');
     if (selected.size === 0) {
       summary.textContent = '';
+      mobileSummary.textContent = 'No squares selected';
       submitBtn.disabled = true;
+      mobileSubmitBtn.disabled = true;
     } else {
-      summary.textContent = `${selected.size} square${selected.size > 1 ? 's' : ''} selected`;
+      const labels = Array.from(selected.values());
+      const visibleLabels = labels.slice(0, 8).join(', ');
+      const hiddenCount = labels.length > 8 ? `, +${labels.length - 8} more` : '';
+      const cost = entryFee > 0 ? ` - $${(selected.size * entryFee).toFixed(2)} total` : '';
+      summary.textContent = `${selected.size} square${selected.size > 1 ? 's' : ''} selected: ${visibleLabels}${hiddenCount}${cost}`;
+      mobileSummary.textContent = `${selected.size}: ${visibleLabels}${hiddenCount}${cost}`;
       submitBtn.disabled = false;
+      mobileSubmitBtn.disabled = false;
     }
   }
 

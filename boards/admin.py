@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib import admin
 from django.contrib import messages
@@ -8,6 +10,8 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import Board, Square
+
+logger = logging.getLogger(__name__)
 
 
 class SquareInline(admin.TabularInline):
@@ -57,6 +61,51 @@ class BoardAdmin(admin.ModelAdmin):
         }),
     ]
 
+    def get_queryset(self, request):
+        """Restrict non-superuser commissioners to boards they created.
+
+        Args:
+            request (HttpRequest): Current admin request.
+
+        Returns:
+            QuerySet[Board]: Boards visible to the current administrator.
+        """
+        queryset = super().get_queryset(request)
+        if request.user.is_superuser:
+            return queryset
+        return queryset.filter(created_by=request.user)
+
+    def get_readonly_fields(self, request, obj=None):
+        """Prevent commissioners from transferring board ownership.
+
+        Args:
+            request (HttpRequest): Current admin request.
+            obj (Board | None): Board currently being edited.
+
+        Returns:
+            list[str]: Read-only admin field names.
+        """
+        fields = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            fields.append('created_by')
+        return fields
+
+    def save_model(self, request, obj, form, change):
+        """Assign new boards to the commissioner who creates them.
+
+        Args:
+            request (HttpRequest): Current admin request.
+            obj (Board): Board being saved.
+            form (ModelForm): Validated admin form.
+            change (bool): Whether an existing board is being edited.
+
+        Returns:
+            None.
+        """
+        if not change and not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
     def get_urls(self):
         """Register board-specific admin actions.
 
@@ -85,7 +134,7 @@ class BoardAdmin(admin.ModelAdmin):
         Returns:
             HttpResponse: Invite form response or redirect back to the board.
         """
-        board = get_object_or_404(Board.objects.select_related('game'), pk=board_id)
+        board = get_object_or_404(self.get_queryset(request).select_related('game'), pk=board_id)
         board_url = request.build_absolute_uri(board.get_absolute_url())
         change_url = reverse('admin:boards_board_change', args=[board_id])
 
@@ -104,14 +153,23 @@ class BoardAdmin(admin.ModelAdmin):
                 )
                 if board.notes:
                     body += f'\nPayment info:\n{board.notes}\n'
-                send_mail(
-                    subject=f'Join NFL Squares: {board.name}',
-                    message=body,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[to_email],
+                try:
+                    sent_count = send_mail(
+                        subject=f'Join NFL Squares: {board.name}',
+                        message=body,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[to_email],
+                    )
+                except Exception:
+                    logger.exception('Participant invite failed for board %s.', board.pk)
+                    sent_count = 0
+                if sent_count:
+                    messages.success(request, f'Invite sent to {to_email}.')
+                    return redirect(change_url)
+                messages.error(
+                    request,
+                    'The invite could not be sent. Check the email configuration and try again.',
                 )
-                messages.success(request, f'Invite sent to {to_email}.')
-                return redirect(change_url)
 
         context = {
             **self.admin_site.each_context(request),
@@ -177,4 +235,15 @@ class SquareAdmin(admin.ModelAdmin):
     actions = [mark_paid_action, mark_unpaid_action]
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('board', 'board__game')
+        """Restrict non-superuser commissioners to squares on their boards.
+
+        Args:
+            request (HttpRequest): Current admin request.
+
+        Returns:
+            QuerySet[Square]: Squares visible to the current administrator.
+        """
+        queryset = super().get_queryset(request).select_related('board', 'board__game')
+        if request.user.is_superuser:
+            return queryset
+        return queryset.filter(board__created_by=request.user)

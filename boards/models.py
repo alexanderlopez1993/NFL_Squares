@@ -147,8 +147,7 @@ class Board(models.Model):
         """
         if not self.is_locked or not self.home_numbers:
             return None
-        home_score = self.game.home_score_after_q(q)
-        away_score = self.game.away_score_after_q(q)
+        home_score, away_score = self.game.scores_for_payout(q)
         if home_score is None or away_score is None:
             return None
         home_digit = home_score % 10
@@ -169,8 +168,7 @@ class Board(models.Model):
             if cell is None:
                 continue
             row, col = cell
-            home_score = self.game.home_score_after_q(q)
-            away_score = self.game.away_score_after_q(q)
+            home_score, away_score = self.game.scores_for_payout(q)
             results.append({
                 'quarter': q,
                 'home_score': home_score,

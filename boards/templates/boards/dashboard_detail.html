@@ -18,7 +18,9 @@
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="assign_numbers">
-      <button type="submit" class="bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
+      <button type="submit"
+              onclick="return confirm('Assign numbers and lock this board? Unclaimed squares will stay empty and this cannot be undone.');"
+              class="bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800">
         Assign Numbers
       </button>
     </form>
@@ -84,7 +86,7 @@
                 {% endif %}
               </td>
               <td class="px-4 py-3 text-right">
-                <form method="post" class="inline">
+                <form method="post" class="inline-flex flex-wrap justify-end gap-2">
                   {% csrf_token %}
                   <input type="hidden" name="square_id" value="{{ square.pk }}">
                   {% if square.paid %}
@@ -94,6 +96,16 @@
                   <input type="hidden" name="action" value="mark_paid">
                   <button type="submit" class="bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800">Mark Paid</button>
                   {% endif %}
+                </form>
+                <form method="post" class="ml-2 inline">
+                  {% csrf_token %}
+                  <input type="hidden" name="square_id" value="{{ square.pk }}">
+                  <input type="hidden" name="action" value="release_claim">
+                  <button type="submit"
+                          onclick="return confirm('Release {{ square.grid_label }} from {{ square.name|escapejs }}? Payment and contact details for this square will be cleared.');"
+                          class="border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
+                    Release
+                  </button>
                 </form>
               </td>
             </tr>
@@ -143,9 +155,10 @@
           <label class="mb-1 block text-sm font-medium text-gray-700">Public link</label>
           <input id="public-link" readonly value="{{ public_url }}" class="w-full border border-gray-300 px-3 py-2 text-sm text-gray-700">
         </div>
-        <button type="button" data-copy-target="public-link" class="w-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+        <button type="button" data-copy-target="public-link" data-default-label="Copy Link" class="w-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
           Copy Link
         </button>
+        <p id="public-link-status" class="text-xs text-gray-500" aria-live="polite"></p>
         {% if board.access_token|length < 20 %}
         <p class="text-xs text-amber-700">This board uses a legacy short token.</p>
         {% endif %}
@@ -234,16 +247,64 @@
 <script>
 (function () {
   document.querySelectorAll('[data-copy-target]').forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const input = document.getElementById(button.dataset.copyTarget);
-      input.select();
-      navigator.clipboard.writeText(input.value);
-      button.textContent = 'Copied';
+      const status = document.getElementById(`${button.dataset.copyTarget}-status`);
+      const defaultLabel = button.dataset.defaultLabel || button.textContent;
+
+      try {
+        await copyText(input.value);
+        button.textContent = 'Copied';
+        if (status) {
+          status.textContent = 'Copied to clipboard.';
+        }
+      } catch (error) {
+        input.focus();
+        input.select();
+        button.textContent = 'Select Link';
+        if (status) {
+          status.textContent = 'Clipboard access was blocked. The link is selected for manual copy.';
+        }
+      }
+
       setTimeout(() => {
-        button.textContent = 'Copy Link';
-      }, 1200);
+        button.textContent = defaultLabel;
+        if (status) {
+          status.textContent = '';
+        }
+      }, 1600);
     });
   });
+
+  /**
+   * Copy a share URL with a legacy fallback for non-secure browser contexts.
+   *
+   * @param {string} value Share URL to copy.
+   * @returns {Promise<void>} Resolves when the browser accepts the copy action.
+   */
+  function copyText(value) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(value);
+    }
+
+    return new Promise((resolve, reject) => {
+      const textarea = document.createElement('textarea');
+      textarea.value = value;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-1000px';
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (copied) {
+        resolve();
+      } else {
+        reject(new Error('Copy command was rejected.'));
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

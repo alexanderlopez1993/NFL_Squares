@@ -1,5 +1,5 @@
-property controlScript : "/Users/alexanderlopez/Projects/NFL_Squares/script/nfl_squares_server.sh"
-property shareScript : "/Users/alexanderlopez/Projects/NFL_Squares/script/nfl_squares_public_share.sh"
+property controlScript : "/Users/alexanderlopez/Projects/games/nfl-squares/script/nfl_squares_server.sh"
+property shareScript : "/Users/alexanderlopez/Projects/games/nfl-squares/script/nfl_squares_public_share.sh"
 property appUrl : "http://127.0.0.1:8000/boards/dashboard/"
 
 on run

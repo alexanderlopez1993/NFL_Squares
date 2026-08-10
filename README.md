@@ -8,8 +8,10 @@ A web app for running NFL squares pools. Built with Django, PostgreSQL, HTMX, an
 - Participants claim squares by name (no account required)
 - Commissioner marks payments in the Django admin
 - Participants pick slots first; random scoring digits are assigned only when the commissioner locks the board
-- Live scores synced from ESPN's unofficial API (auto-refreshes every 60s during games)
-- Quarter-by-quarter winner display with payout calculations
+- Live scores synced from ESPN's unofficial API (the browser refreshes every 60 seconds during games)
+- Quarter winners appear only after a period is complete; the final payout includes overtime
+- Private, high-entropy board links with cache and referrer protections
+- Commissioner ownership boundaries, claim limits, and a participant privacy notice
 
 ## Quick Start (Docker)
 
@@ -20,18 +22,33 @@ docker compose up
 docker compose exec web python manage.py createsuperuser
 ```
 
-Then visit http://localhost:8000/admin to create a board.
+Compose runs Django against the `db` PostgreSQL service even though
+`.env.example` defaults to SQLite for direct local development. Then visit
+http://localhost:8000/admin to create a board.
+
+Health checks:
+
+```bash
+docker compose ps
+curl http://localhost:8000/healthz/
+```
 
 ## Local Development
 
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-# Set DB_HOST=localhost in .env (or use SQLite by editing settings.py)
+npm ci
+npm run build:css
+# Set DB_HOST=localhost in .env, or set USE_SQLITE=True for local-only work
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
+
+For template/CSS work, run `npm run watch:css` in a second terminal while
+developing. Production and Docker builds should run `npm run build:css` before
+`python manage.py collectstatic`.
 
 ## Local Server Control
 
@@ -112,19 +129,18 @@ only granted by `ADMIN_OAUTH_SUPERUSER_EMAILS`.
 python manage.py sync_schedule
 
 # Sync all 18 regular season weeks
-python manage.py sync_schedule --all-weeks --season 2025
+python manage.py sync_schedule --all-weeks --season 2026
 
 # Sync postseason (playoffs + Super Bowl)
-python manage.py sync_schedule --postseason --season 2025
+python manage.py sync_schedule --postseason --season 2026
 
 # Update live scores (run via cron every 5 min on game days)
 python manage.py sync_scores
 ```
 
-### Cron example (every 5 minutes)
-```
-*/5 * * * * cd /app && python manage.py sync_scores >> /var/log/sync_scores.log 2>&1
-```
+The production blueprint runs score sync every five minutes and schedule sync
+daily. The ESPN feed is unofficial, so commissioners should follow the manual
+score-recovery procedure in the operations runbook if it becomes unavailable.
 
 ## Commissioner Workflow
 
@@ -138,3 +154,19 @@ python manage.py sync_scores
 Use `/boards/dashboard/` for the commissioner workflow. Django admin remains
 available for deeper maintenance. Local development defaults to Django's console
 email backend so invites print to the terminal instead of sending real email.
+
+## Deployment
+
+Deployment is staged around CI, Docker, and explicit environment variables:
+
+- Local and Docker smoke checks must pass before a remote deploy.
+- CI runs Django tests against PostgreSQL and builds the Docker image.
+- Manual container publishing is available through GitHub Actions.
+- Environment templates live in `.env.dev.example` and `.env.prod.example`.
+- `render.yaml` provisions the web service, PostgreSQL database, and sync jobs.
+
+Use these documents for release:
+
+- `docs/deployment/staged-deployment.md` — first deployment and rollback
+- `docs/release-checklist.md` — exact go/no-go checklist
+- `docs/operations/runbook.md` — game-day operations, recovery, and retention
